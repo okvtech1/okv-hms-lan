@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en"><head><script>
+// Connects this page to the backend (Code.gs). Paste your Web app URL between the quotes below.
+window.OKV_API_URL = 'PASTE_YOUR_WEB_APP_URL_HERE';
+(function () {
+  var API = window.OKV_API_URL;
+  function Runner(ok, fail) { this._ok = ok; this._fail = fail; }
+  function wrap(r) {
+    return new Proxy(r, {
+      get: function (t, p) {
+        if (p in t) return t[p];
+        if (typeof p === 'string') return function () {
+          return callApi(p, Array.prototype.slice.call(arguments), t._ok, t._fail);
+        };
+      }
+    });
+  }
+  Runner.prototype.withSuccessHandler = function (f) { return wrap(new Runner(f, this._fail)); };
+  Runner.prototype.withFailureHandler = function (f) { return wrap(new Runner(this._ok, f)); };
+  function callApi(fn, args, ok, fail) {
+    if (!API || API.indexOf('PASTE_') === 0) {
+      var m = new Error('The web app address is not set. Paste it into admin.html (OKV_API_URL).');
+      if (fail) fail(m); else console.error(m);
+      return;
+    }
+    return fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'admin_call', fn: fn, args: args })
+    }).then(function (r) { return r.json(); })
+      .then(function (d) { if (d.error) throw new Error(d.error); if (ok) ok(d.result); })
+      .catch(function (e) { if (fail) fail(e); else console.error(e); });
+  }
+  window.google = { script: { run: wrap(new Runner(null, null)) } };
+})();
+</script><base target="_top"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OKV Technology Admin</title>
+<link href="../assets/css/bootstrap.min.css" rel="stylesheet">
+<style>
+body{background:#f1f5f9}.brand{background:#0f766e}.nav-link{color:#334155}.nav-pills .nav-link.active{background:#0f766e}
+.stat{border:0;border-radius:14px}.stat .n{font-size:28px;font-weight:700;color:#0f766e}.tbl{font-size:13px}
+.code{font-family:Consolas,monospace;font-weight:700;letter-spacing:1px}.mono{font-family:Consolas,monospace}
+#toasts{position:fixed;right:14px;top:14px;z-index:2000}.table-responsive{max-height:70vh}
+</style></head><body>
+<div id="toasts"></div>
+
+<div id="login" class="container" style="max-width:380px;margin-top:12vh">
+  <div class="card shadow-sm"><div class="card-body p-4">
+    <h4 class="text-center mb-1" style="color:#0f766e">OKV TECHNOLOGY</h4><p class="text-center text-muted">Admin dashboard</p>
+    <input type="password" id="pw" class="form-control mb-3" placeholder="Admin password" autofocus>
+    <button class="btn w-100 text-white" style="background:#0f766e" id="lbtn">Sign in</button>
+    <div id="lerr" class="text-danger small mt-2"></div>
+  </div></div>
+</div>
+
+<div id="app" class="d-none">
+  <nav class="navbar brand navbar-dark px-3"><span class="navbar-brand fw-bold">OKV TECHNOLOGY | HMS Admin</span>
+    <div class="d-flex gap-2 align-items-center">
+      <button class="btn btn-warning btn-sm position-relative" onclick="show('alerts')">Alerts <span id="bell" class="badge bg-danger">0</span></button>
+      <button class="btn btn-outline-light btn-sm" onclick="logout()">Sign out</button></div></nav>
+  <div class="container-fluid py-3">
+    <ul class="nav nav-pills mb-3 flex-wrap gap-1" id="tabs">
+      <li class="nav-item"><a class="nav-link active" data-t="overview" href="#">Overview</a></li>
+      <li class="nav-item"><a class="nav-link" data-t="alerts" href="#">Alerts</a></li>
+      <li class="nav-item"><a class="nav-link" data-t="subs" href="#">Submissions</a></li>
+      <li class="nav-item"><a class="nav-link" data-t="customers" href="#">Customers</a></li>
+      <li class="nav-item"><a class="nav-link" data-t="codes" href="#">Activation codes</a></li>
+      <li class="nav-item"><a class="nav-link" data-t="payments" href="#">Payments</a></li>
+      <li class="nav-item"><a class="nav-link" data-t="messages" href="#">Messages</a></li>
+      <li class="nav-item"><a class="nav-link" data-t="integrations" href="#">Integrations</a></li>
+      <li class="nav-item"><a class="nav-link" data-t="settings" href="#">Settings</a></li>
+    </ul>
+    <div id="view"></div>
+  </div>
+</div>
+
+<div class="modal fade" id="modal" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content">
+  <div class="modal-header"><h5 class="modal-title" id="mt"></h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body" id="mb"></div><div class="modal-footer" id="mf"></div></div></div></div>
+
+<script src="../assets/js/bootstrap.bundle.min.js"></script>
+<script>
+let TOKEN=null,TAB='overview',POLL=null,LASTUNREAD=0,CUS=[],SUBS=[];
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const gs=(fn,...a)=>new Promise((res,rej)=>google.script.run.withSuccessHandler(res).withFailureHandler(e=>rej(e)) [fn](...a));
+function toast(m,ok){const d=document.createElement('div');d.className='toast show align-items-center text-white border-0 mb-2 '+(ok?'bg-success':'bg-danger');d.innerHTML='<div class="d-flex"><div class="toast-body"></div></div>';d.querySelector('.toast-body').textContent=m;$('#toasts').appendChild(d);setTimeout(()=>d.remove(),ok?2500:6000)}
+async function call(fn,...a){try{return await gs(fn,TOKEN,...a)}catch(e){const m=(e&&e.message)||'Error';if(/Session expired/.test(m)){logout(true)}toast(m.replace(/^Error: /,''));throw e}}
+const normPhone=p=>{let d=String(p||'').replace(/\D/g,'');if(d.startsWith('00'))d=d.slice(2);if(d.startsWith('0'))d='234'+d.slice(1);return d};
+const waLink=(p,t)=>'https://wa.me/'+normPhone(p)+'?text='+encodeURIComponent(t||'');
+const smsLink=(p,t)=>'sms:+'+normPhone(p)+'?body='+encodeURIComponent(t||'');
+const telLink=p=>'tel:+'+normPhone(p);
+function modal(title,body,footer){$('#mt').textContent=title;$('#mb').innerHTML=body;$('#mf').innerHTML=footer||'<button class="btn btn-secondary" data-bs-dismiss="modal">Close</button>';bootstrap.Modal.getOrCreateInstance($('#modal')).show()}
+const hide=()=>bootstrap.Modal.getOrCreateInstance($('#modal')).hide();
+const badge=s=>`<span class="badge bg-${{New:'danger','In progress':'warning',Done:'success',Trial:'info',Licensed:'success','Pending activation':'warning',Lead:'secondary',Available:'success',Sent:'secondary'}[s]||'secondary'}">${esc(s)}</span>`;
+const table=(cols,rows,empty)=>rows.length?`<div class="table-responsive bg-white rounded shadow-sm"><table class="table table-sm table-hover tbl mb-0"><thead class="table-light" style="position:sticky;top:0"><tr>${cols.map(c=>`<th>${c.h}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${cols.map(c=>`<td>${c.f(r)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`:`<div class="alert alert-light">${empty||'Nothing here yet'}</div>`;
+
+/* ---- auth ---- */
+async function login(){try{$('#lerr').textContent='';TOKEN=await gs('adminLogin',$('#pw').value);$('#login').classList.add('d-none');$('#app').classList.remove('d-none');$('#pw').value='';show('overview');poll();POLL=setInterval(poll,30000)}catch(e){$('#lerr').textContent=(e.message||'Error').replace(/^Error: /,'')}}
+function logout(expired){if(TOKEN&&!expired)gs('adminLogout',TOKEN).catch(()=>{});TOKEN=null;clearInterval(POLL);$('#app').classList.add('d-none');$('#login').classList.remove('d-none');if(expired)$('#lerr').textContent='Session expired. Please sign in again.'}
+$('#lbtn').onclick=login;$('#pw').onkeydown=e=>{if(e.key==='Enter')login()};
+document.querySelectorAll('#tabs a').forEach(a=>a.onclick=e=>{e.preventDefault();show(a.dataset.t)});
+function show(t){TAB=t;document.querySelectorAll('#tabs a').forEach(a=>a.classList.toggle('active',a.dataset.t===t));({overview,alerts,subs,customers,codes,payments,messages,integrations,settings})[t]()}
+async function poll(){try{const a=await gs('adminAlerts',TOKEN);$('#bell').textContent=a.unread;if(a.unread>LASTUNREAD&&LASTUNREAD>=0&&TAB!=='alerts'&&POLL){const n=a.items[0];if(n)toast('New: '+n.text,true)}LASTUNREAD=a.unread}catch(e){}}
+
+/* ---- overview ---- */
+async function overview(){
+  $('#view').innerHTML='<div class="text-muted">Loading...</div>';const s=await call('adminSummary');
+  const c=(n,l,x)=>`<div class="col-6 col-md-3"><div class="card stat shadow-sm"><div class="card-body"><div class="n">${n}</div><div class="text-muted small">${l}</div>${x||''}</div></div></div>`;
+  $('#view').innerHTML=`<div class="row g-3 mb-3">${c(s.unread,'Unread alerts')}${c(s.subNew,'New submissions')}${c(s.pendingActivations,'Activations waiting for a code')}${c(s.cusTotal,'Customers')}
+  ${c(s.codesAvailable,'Codes ready to send','<div class="text-muted small">of '+s.codesTotal+' ('+s.codesSent+' sent)</div>')}${c(s.quota,'Emails you can still send today')}
+  ${c(s.cusByStatus.Trial||0,'Trial users')}${c(s.cusByStatus.Licensed||0,'Licensed customers')}${c(s.paidCount,'Paid orders')}${c('\u20a6'+Number(s.revenue).toLocaleString(),'Revenue recorded')}${c(s.installPending,'Installation requests waiting')}</div>
+  <div class="card shadow-sm"><div class="card-body"><h6>Submissions by type</h6>${Object.keys(s.subByType).map(k=>`<span class="badge bg-secondary me-2">${esc(k)}: ${s.subByType[k]}</span>`).join('')||'<span class="text-muted">None yet</span>'}</div></div>
+  ${s.pendingActivations?'<div class="alert alert-warning mt-3 d-flex justify-content-between align-items-center flex-wrap gap-2"><span><b>'+s.pendingActivations+'</b> activation request(s) are waiting. Check the receipt, then press <b>Approve &amp; send code</b>. Customers expect their code within 24 hours.</span><button class="btn btn-sm btn-success" onclick="show(\'subs\');setTimeout(()=>{$(\'#ss\').value=\'New\';loadSubs()},300)">Review and approve</button></div>':''}
+  ${s.codesAvailable<100?'<div class="alert alert-danger mt-3 d-flex justify-content-between align-items-center flex-wrap gap-2"><span>Only <b>'+s.codesAvailable+'</b> activation codes are left.</span><button class="btn btn-sm btn-danger" onclick="moreCodes(500)">Generate 500 more</button></div>':''}`;
+}
+
+/* ---- alerts ---- */
+async function alerts(){
+  const a=await call('adminAlerts');$('#bell').textContent=a.unread;LASTUNREAD=a.unread;
+  $('#view').innerHTML=`<div class="d-flex justify-content-between mb-2"><h5>Alerts</h5><button class="btn btn-sm btn-outline-secondary" onclick="readAll()">Mark all read</button></div>`+table([{h:'Time',f:r=>esc(r.time)},{h:'Type',f:r=>esc(r.type)},{h:'Alert',f:r=>(r.read?'':'<span class="badge bg-danger me-1">new</span>')+esc(r.text)},{h:'',f:r=>r.canApprove?`<button class="btn btn-sm btn-success" onclick="approveAlert('${esc(r.subId)}')">Approve &amp; send code</button>`:''}],a.items,'No alerts yet');
+}
+async function approveAlert(id){if(!confirm('Approve this request and email the activation code now?'))return;const r=await call('adminApprove',id);toast('Approved. Code '+r.code+' emailed to '+r.email+'.',true);alerts()}
+async function readAll(){await call('adminMarkAlertsRead');alerts()}
+
+/* ---- submissions ---- */
+async function subs(){
+  $('#view').innerHTML=`<div class="row g-2 mb-2"><div class="col-md-3"><select id="st" class="form-select form-select-sm"><option value="">All types</option>${['Trial Download','Trial Registered','Activation Request','Purchase Request','Paystack Payment','Installation Request','Enquiry','Support'].map(x=>`<option>${x}</option>`).join('')}</select></div>
+  <div class="col-md-3"><select id="ss" class="form-select form-select-sm"><option value="">Any status</option><option>New</option><option>In progress</option><option>Done</option></select></div>
+  <div class="col-md-4"><input id="sq" class="form-control form-control-sm" placeholder="Search name, email, phone, reference"></div><div class="col-md-2"><button class="btn btn-sm btn-primary w-100" onclick="loadSubs()">Search</button></div></div><div id="apbar" class="mb-2"></div><div id="sl"></div>`;
+  ['st','ss'].forEach(i=>$('#'+i).onchange=loadSubs);$('#sq').onkeydown=e=>{if(e.key==='Enter')loadSubs()};loadSubs();
+}
+async function loadSubs(){
+  SUBS=await call('adminSubmissions',$('#st').value,$('#ss').value,$('#sq').value);
+  const pend=SUBS.filter(r=>/Activation Request|Purchase Request|Paystack/.test(r.Type)&&r.Status!=='Done');
+  $('#apbar').innerHTML=pend.length?`<div class="alert alert-warning py-2 d-flex justify-content-between align-items-center flex-wrap gap-2 mb-0"><span><b>${pend.length}</b> request${pend.length===1?'':'s'} waiting for approval. Check each payment receipt first.</span><button class="btn btn-sm btn-success" onclick="approveAll()">Approve all ${pend.length} &amp; send codes</button></div>`:'';
+  $('#sl').innerHTML=table([{h:'ID',f:r=>esc(r.ID)},{h:'Time',f:r=>esc(r.Time)},{h:'Type',f:r=>esc(r.Type)},{h:'Customer',f:r=>`<b>${esc(r.Name)}</b><br>${esc(r.Organization)}<br><span class="text-muted">${esc(r.Email)}<br>${esc(r.Phone)}</span>`},
+   {h:'Details',f:r=>(r.PayRef?`Ref: ${esc(r.PayRef)}<br>${esc(r.Amount)} on ${esc(r.PaidDate)}<br>`:'')+(r.ReceiptURL?`<a target="_blank" rel="noopener" href="${esc(r.ReceiptURL)}">View receipt</a><br>`:'')+(r.InstallID?`Install: <span class="mono">${esc(r.InstallID)}</span><br>`:'')+esc(r.Message)},
+   {h:'Status',f:r=>badge(r.Status)+(r.Notes?`<div class="small text-muted">${esc(r.Notes)}</div>`:'')},
+   {h:'',f:r=>`<div class="d-flex flex-wrap gap-1">${/Activation Request|Purchase Request|Paystack/.test(r.Type)&&r.Status!=='Done'?`<button class="btn btn-sm btn-success" onclick="approve('${esc(r.ID)}')">Approve &amp; send code</button>`:''}<button class="btn btn-sm btn-outline-secondary" onclick="subStatus('${esc(r.ID)}')">Update</button><button class="btn btn-sm btn-outline-primary" onclick="contactModal('${esc(r.Email)}','${esc(r.Name)}','${esc(r.Phone)}')">Contact</button></div>`}],SUBS,'No submissions match');
+}
+function subStatus(id){const s=SUBS.find(x=>x.ID===id);modal('Update '+id,`<label class="form-label">Status</label><select id="us" class="form-select mb-2">${['New','In progress','Done'].map(x=>`<option${x===s.Status?' selected':''}>${x}</option>`).join('')}</select><label class="form-label">Notes</label><textarea id="un" class="form-control" rows="3">${esc(s.Notes)}</textarea>`,'<button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary" id="usb">Save</button>');
+  $('#usb').onclick=async()=>{await call('adminUpdateSubmission',id,$('#us').value,$('#un').value);hide();toast('Saved',true);loadSubs()}}
+async function approve(id){const s=SUBS.find(x=>x.ID===id)||{};if(!confirm('Approve '+(s.Name||id)+' and email their activation code now?'))return;
+  const r=await call('adminApprove',id);toast('Approved. Code '+r.code+' emailed to '+r.email+'. '+r.quota+' emails left today.',true);if(TAB==='subs')loadSubs();else show(TAB)}
+async function approveAll(){const ids=SUBS.filter(r=>/Activation Request|Purchase Request|Paystack/.test(r.Type)&&r.Status!=='Done').map(r=>r.ID);if(!ids.length)return;
+  if(!confirm('Approve all '+ids.length+' waiting request(s) and email each customer their code now? Make sure you have checked the payments.'))return;
+  const r=await call('adminApproveMany',ids);toast(r.approved+' approved and emailed.'+(r.errors.length?' '+r.errors.length+' problem(s): '+r.errors.slice(0,2).join('; '):''),r.errors.length===0);loadSubs()}
+function sendCodeFor(id){const s=SUBS.find(x=>x.ID===id);confirmSend(s.Email,s.Name,id)}
+function confirmSend(email,name){
+  modal('Send activation code',`<p>The next available code will be emailed <b>immediately</b> to:</p><p class="fs-5">${esc(name)} &lt;${esc(email)}&gt;</p><p class="text-muted small">Check the payment receipt first. A sent code is marked as used and cannot be sent again.</p>`,'<button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-success" id="scb">Send code now</button>');
+  $('#scb').onclick=async()=>{$('#scb').disabled=true;try{const r=await call('adminSendCode',{email,name});hide();toast('Code '+r.code+' sent to '+email+'. '+r.quota+' emails left today.',true);show(TAB)}catch(e){$('#scb').disabled=false}}}
+
+/* ---- customers ---- */
+async function customers(){
+  $('#view').innerHTML=`<div class="row g-2 mb-2"><div class="col-md-6"><input id="cq" class="form-control form-control-sm" placeholder="Search customers"></div><div class="col-md-6 d-flex gap-2"><button class="btn btn-sm btn-primary" onclick="loadCus()">Search</button><button class="btn btn-sm btn-success" onclick="cusForm()">+ Add customer</button><button class="btn btn-sm btn-outline-primary" onclick="composeSelected()">Message selected</button><button class="btn btn-sm btn-outline-secondary" onclick="exportCus()">Export CSV</button></div></div><div id="cl"></div>`;
+  $('#cq').onkeydown=e=>{if(e.key==='Enter')loadCus()};loadCus();
+}
+async function loadCus(){
+  CUS=await call('adminCustomers',$('#cq').value);
+  $('#cl').innerHTML=table([{h:'<input type="checkbox" onclick="document.querySelectorAll(\'.cs\').forEach(c=>c.checked=this.checked)">',f:r=>`<input type="checkbox" class="cs" value="${esc(r.ID)}">`},{h:'Customer',f:r=>`<b>${esc(r.Name)}</b><br>${esc(r.Organization)}`},{h:'Contact',f:r=>`${esc(r.Email)}<br>${esc(r.Phone)}<br>${esc(r.Location)}`},{h:'Status',f:r=>badge(r.Status)},{h:'Trial start / code',f:r=>esc(r.TrialStart)+(r.ActivationCode?`<br><span class="code">${esc(r.ActivationCode)}</span><br><span class="small text-muted">sent ${esc(r.CodeSentAt)}</span>`:'')},
+   {h:'',f:r=>`<div class="d-flex flex-wrap gap-1"><button class="btn btn-sm btn-outline-primary" onclick="contactModal('${esc(r.Email)}','${esc(r.Name)}','${esc(r.Phone)}')">Contact</button><button class="btn btn-sm btn-success" onclick="confirmSend('${esc(r.Email)}','${esc(r.Name)}')">Send code</button><button class="btn btn-sm btn-outline-secondary" onclick="cusForm('${esc(r.ID)}')">Edit</button></div>`}],CUS,'No customers yet. They appear automatically when someone submits a form.');
+}
+function cusForm(id){const c=CUS.find(x=>x.ID===id)||{Status:'Lead'};
+  const f=(i,l,v,t)=>`<div class="col-md-6"><label class="form-label small">${l}</label><input id="${i}" type="${t||'text'}" class="form-control" value="${esc(v)}"></div>`;
+  modal(id?'Edit customer':'Add customer',`<div class="row g-2">${f('cn','Name',c.Name)}${f('co','Organization',c.Organization)}${f('ce','Email',c.Email,'email')}${f('cp','Phone / WhatsApp',c.Phone)}${f('cl','Location',c.Location)}<div class="col-md-6"><label class="form-label small">Status</label><select id="cs" class="form-select">${['Lead','Trial','Pending activation','Licensed'].map(x=>`<option${x===c.Status?' selected':''}>${x}</option>`).join('')}</select></div><div class="col-12"><label class="form-label small">Notes</label><textarea id="cnt" class="form-control" rows="2">${esc(c.Notes)}</textarea></div></div>`,
+   `${id?'<button class="btn btn-outline-danger me-auto" id="cdel">Delete</button>':''}<button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary" id="csv">Save</button>`);
+  $('#csv').onclick=async()=>{await call('adminSaveCustomer',{ID:id||'',Name:$('#cn').value,Organization:$('#co').value,Email:$('#ce').value,Phone:$('#cp').value,Location:$('#cl').value,Status:$('#cs').value,Notes:$('#cnt').value});hide();toast('Saved',true);loadCus()};
+  if(id)$('#cdel').onclick=async()=>{if(confirm('Delete this customer record? Their submissions stay in the log.')){await call('adminDeleteCustomer',id);hide();loadCus()}}}
+
+/* ---- contact (email / whatsapp / sms / call) ---- */
+function contactModal(email,name,phone){
+  const msg='Hello '+name+', this is OKV Technology Consults about your Hospital Management System. ';
+  const hasP=normPhone(phone).length>=10;
+  modal('Contact '+name,`<div class="d-flex flex-wrap gap-2 mb-3">
+    ${hasP?`<a class="btn btn-success" target="_blank" rel="noopener" href="${waLink(phone,msg)}" onclick="logOpen('whatsapp','${esc(phone)}')">WhatsApp</a><a class="btn btn-outline-primary" href="${smsLink(phone,msg)}" onclick="logOpen('sms','${esc(phone)}')">SMS</a><a class="btn btn-outline-secondary" href="${telLink(phone)}" onclick="logOpen('call','${esc(phone)}')">Call</a>`:'<span class="text-muted">No valid phone number saved</span>'}</div>
+    <h6>Send an email now</h6><input id="ms" class="form-control mb-2" placeholder="Subject"><textarea id="mbd" class="form-control" rows="5">Hello ${esc(name)},\n\n</textarea>`,
+    '<button class="btn btn-secondary" data-bs-dismiss="modal">Close</button><button class="btn btn-primary" id="msend">Send email</button>');
+  $('#msend').onclick=async()=>{const r=await call('adminSendMessage',{segment:'selected',recipients:[{name,email}],subject:$('#ms').value,body:$('#mbd').value});hide();toast('Email sent ('+r.sent+')',true)}}
+function logOpen(ch,to){gs('adminLogMessage',TOKEN,{channel:ch,to:to,body:'Opened '+ch}).catch(()=>{})}
+function composeSelected(){const ids=[...document.querySelectorAll('.cs:checked')].map(c=>c.value);if(!ids.length)return toast('Tick at least one customer');window._sel=CUS.filter(c=>ids.includes(c.ID));show('messages')}
+
+/* ---- messages ---- */
+async function messages(){
+  const sel=window._sel||[];
+  $('#view').innerHTML=`<div class="card shadow-sm mb-3"><div class="card-body"><h5>Send a message</h5>
+  <div class="row g-2"><div class="col-md-3"><label class="form-label small">Send by</label><select id="mc" class="form-select"><option value="email">Email (sent automatically)</option><option value="whatsapp">WhatsApp (opens chat)</option><option value="sms">SMS (opens your phone)</option><option value="smsauto">SMS (sent automatically, needs Termii in Integrations)</option></select></div>
+  <div class="col-md-4"><label class="form-label small">To</label><select id="mg" class="form-select">${sel.length?`<option value="selected">Selected customers (${sel.length})</option>`:''}<option value="all">All customers</option><option value="trial">Trial users</option><option value="pending">Waiting for activation</option><option value="licensed">Licensed customers</option><option value="lead">Leads</option></select></div>
+  <div class="col-md-5"><label class="form-label small">Subject (email)</label><input id="msub" class="form-control"></div>
+  <div class="col-12"><label class="form-label small">Message (use {name} for the customer's name)</label><textarea id="mbody" class="form-control" rows="4">Hello {name},\n\n</textarea></div></div>
+  <button class="btn btn-primary mt-2" id="msnd">Send / prepare</button><div id="links" class="mt-3"></div></div></div><h6>History</h6><div id="mh"></div>`;
+  $('#msnd').onclick=sendMsg;loadHistory();
+}
+async function sendMsg(){
+  const ch=$('#mc').value,seg=$('#mg').value,body=$('#mbody').value,subject=$('#msub').value;
+  if(ch==='smsauto'){const r=await call('adminSendMessage',{channel:'sms',segment:seg,recipients:(window._sel||[]).map(c=>({name:c.Name,phone:c.Phone})),body});toast(r.sent+' SMS sent, '+r.failed+' failed',r.failed===0);loadHistory();return}
+  if(ch==='email'){const r=await call('adminSendMessage',{segment:seg,recipients:(window._sel||[]).map(c=>({name:c.Name,email:c.Email})),subject,body});toast(r.sent+' sent, '+r.failed+' failed. '+r.quota+' emails left today.',r.failed===0);loadHistory();return}
+  const all=await call('adminCustomers','');const map={all:null,trial:'Trial',pending:'Pending activation',licensed:'Licensed',lead:'Lead'};
+  const list=(seg==='selected'?window._sel:all.filter(c=>!map[seg]||c.Status===map[seg])).filter(c=>normPhone(c.Phone).length>=10);
+  if(!list.length)return toast('No customers with a valid phone number in that group');
+  $('#links').innerHTML='<div class="alert alert-info py-2">WhatsApp and SMS open on your own device, one customer at a time. Click each button to send.</div>'+table([{h:'Customer',f:r=>esc(r.Name)},{h:'Phone',f:r=>esc(r.Phone)},{h:'',f:r=>{const t=body.replace(/\{name\}/g,r.Name||'');return ch==='whatsapp'?`<a class="btn btn-sm btn-success" target="_blank" rel="noopener" href="${waLink(r.Phone,t)}" onclick="logOpen('whatsapp','${esc(r.Phone)}')">Open WhatsApp</a>`:`<a class="btn btn-sm btn-primary" href="${smsLink(r.Phone,t)}" onclick="logOpen('sms','${esc(r.Phone)}')">Open SMS</a>`}}],list);
+}
+async function loadHistory(){const m=await call('adminMessages');$('#mh').innerHTML=table([{h:'Time',f:r=>esc(r.Time)},{h:'Channel',f:r=>esc(r.Channel)},{h:'To',f:r=>esc(r.To)},{h:'Subject',f:r=>esc(r.Subject)},{h:'Status',f:r=>esc(r.Status)}],m,'No messages yet')}
+
+/* ---- codes ---- */
+async function codes(){
+  $('#view').innerHTML=`<div class="row g-2 mb-2 align-items-center"><div class="col-md-3"><select id="cf" class="form-select form-select-sm"><option value="Available">Available (ready to send)</option><option value="Sent">Sent</option><option value="">All</option></select></div><div class="col-md-9 d-flex gap-2 flex-wrap"><button class="btn btn-sm btn-outline-primary" onclick="genCodes()">Generate more codes</button><button class="btn btn-sm btn-success" onclick="issueCode()">Issue a code now</button><span id="cinfo" class="align-self-center text-muted small"></span></div></div><div id="cc"></div>`;
+  $('#cf').onchange=()=>loadCodes(0);loadCodes(0);
+}
+async function loadCodes(p){
+  const r=await call('adminCodes',$('#cf').value,p);$('#cinfo').textContent=r.available+' codes ready to send';
+  $('#cc').innerHTML=table([{h:'Serial',f:x=>esc(x.Serial)},{h:'Code',f:x=>`<span class="code">${esc(x.Code)}</span>`},{h:'Status',f:x=>badge(x.Status)},{h:'Sent to',f:x=>esc(x.AssignedTo)},{h:'Sent at',f:x=>esc(x.SentAt)},{h:'',f:x=>x.Status==='Available'?`<button class="btn btn-sm btn-success" onclick="sendSpecific(${x.Serial})">Send this code</button>`:''}],r.rows,'No codes in this view')+
+   `<div class="d-flex gap-2 mt-2 align-items-center"><button class="btn btn-sm btn-outline-secondary" ${r.page<=0?'disabled':''} onclick="loadCodes(${r.page-1})">Previous</button><span class="small">Page ${r.page+1} of ${Math.max(r.pages,1)}</span><button class="btn btn-sm btn-outline-secondary" ${r.page+1>=r.pages?'disabled':''} onclick="loadCodes(${r.page+1})">Next</button></div>`;
+}
+function sendSpecific(serial){modal('Send code '+serial,`<label class="form-label small">Customer email</label><input id="se" type="email" class="form-control mb-2"><label class="form-label small">Customer name</label><input id="sn" class="form-control">`,'<button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-success" id="ssb">Email this code</button>');
+  $('#ssb').onclick=async()=>{const r=await call('adminSendCode',{email:$('#se').value,name:$('#sn').value,serial});hide();toast('Code sent. '+r.quota+' emails left today.',true);loadCodes(0)}}
+function issueCode(){modal('Issue an activation code now',`<p class="small text-muted">Takes the next ready code, marks it as used and shows it here, so you can give it to a customer yourself (phone call, WhatsApp, in person). Nothing is emailed.</p><label class="form-label small">Who is it for? (name, hospital or note)</label><input id="ic_l" class="form-control">`,'<button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-success" id="icb">Issue code</button>');
+  $('#icb').onclick=async()=>{const r=await call('adminIssueCode',$('#ic_l').value);$('#mb').innerHTML=`<p>Give this code to the customer:</p><p class="fs-3 code text-center border border-2 rounded p-3 bg-light" id="ic_out">${esc(r.code)}</p><p class="small text-muted">Serial ${r.serial}. It is recorded as used.</p>`;$('#mf').innerHTML='<button class="btn btn-outline-secondary" onclick="navigator.clipboard.writeText(document.getElementById(\'ic_out\').textContent);toast(\'Copied\',true)">Copy</button><button class="btn btn-secondary" data-bs-dismiss="modal">Done</button>';loadCodes(0)}}
+async function moreCodes(n){const r=await call('adminGenerateCodes',n);toast(r+' new codes created',true);overview()}
+async function genCodes(){const n=prompt('How many more codes to generate? (1 to 2000)','500');if(!n)return;const r=await call('adminGenerateCodes',Number(n));toast(r+' codes created',true);loadCodes(0)}
+
+/* ---- payments ---- */
+async function payments(){
+  const l=await call('adminPayments');
+  $('#view').innerHTML=`<div class="d-flex justify-content-between mb-2"><h5>Payments</h5><button class="btn btn-sm btn-success" onclick="manualPay()">+ Record manual payment</button></div>`+
+  table([{h:'Time',f:r=>esc(r.Time)},{h:'Reference',f:r=>`<span class="mono">${esc(r.Reference)}</span>`},{h:'Customer',f:r=>`<b>${esc(r.Name)}</b><br><span class="text-muted">${esc(r.Email)}</span>`},{h:'Amount',f:r=>'\u20a6'+Number(r.Amount||0).toLocaleString()},{h:'Channel',f:r=>esc(r.Channel)},
+    {h:'Status',f:r=>`<span class="badge bg-${{Paid:'success',Initiated:'secondary',Processing:'warning',Failed:'danger',Mismatch:'danger'}[r.Status]||'secondary'}">${esc(r.Status)}</span>`},{h:'Code',f:r=>r.Code?`<span class="code">${esc(r.Code)}</span>`:(r.Status==='Paid'?`<button class="btn btn-sm btn-success" onclick="confirmSend('${esc(r.Email)}','${esc(r.Name)}')">Approve &amp; send code</button>`:'')},{h:'Note',f:r=>esc(r.Note)}],l,'No payments yet. Paystack and manual payments appear here.');
+}
+function manualPay(){
+  const f=(i,l,t,v)=>`<div class="col-md-6"><label class="form-label small">${l}</label><input id="${i}" type="${t||'text'}" class="form-control" value="${esc(v||'')}"></div>`;
+  modal('Record a manual (bank transfer) payment',`<p class="small text-muted">Use this after you have checked the money in your bank account.</p><div class="row g-2">${f('mp_n','Customer name')}${f('mp_o','Hospital / business')}${f('mp_e','Email (the code goes here)','email')}${f('mp_p','Phone')}${f('mp_a','Amount paid','number','120000')}${f('mp_t','Note')}</div><div class="form-check mt-3"><input class="form-check-input" type="checkbox" id="mp_s" checked><label class="form-check-label" for="mp_s">Email an activation code now</label></div>`,
+   '<button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-success" id="mpb">Record payment</button>');
+  $('#mpb').onclick=async()=>{const r=await call('adminRecordPayment',{name:$('#mp_n').value,org:$('#mp_o').value,email:$('#mp_e').value,phone:$('#mp_p').value,amount:$('#mp_a').value,note:$('#mp_t').value,sendCode:$('#mp_s').checked});hide();toast(r.code?'Recorded. Code '+r.code+' emailed.':'Payment recorded',true);payments()}}
+function exportCus(){const rows=CUS.map(c=>[c.ID,c.Name,c.Organization,c.Email,c.Phone,c.Location,c.Status,c.TrialStart,c.ActivationCode,c.CodeSentAt]);
+  const q=v=>{v=String(v==null?'':v);if(/^[=+\-@]/.test(v))v="'"+v;return '"'+v.replace(/"/g,'""')+'"'};
+  const csv=[['ID','Name','Organization','Email','Phone','Location','Status','TrialStart','ActivationCode','CodeSentAt']].concat(rows).map(r=>r.map(q).join(',')).join('\r\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv'}));a.download='okv_customers.csv';document.body.appendChild(a);a.click();a.remove()}
+
+/* ---- integrations ---- */
+async function integrations(){
+  const c=await call('adminConfig');window._cfg=c;
+  const sw=(id,label,on)=>`<div class="form-check form-switch mb-2"><input class="form-check-input" type="checkbox" id="${id}" ${on?'checked':''}><label class="form-check-label" for="${id}">${label}</label></div>`;
+  const inp=(id,label,val,ph,type)=>`<label class="form-label small mb-0 mt-2">${label}</label><input id="${id}" type="${type||'text'}" class="form-control form-control-sm" value="${esc(val||'')}" placeholder="${esc(ph||'')}">`;
+  const card=(title,body,test)=>`<div class="col-lg-6"><div class="card shadow-sm h-100"><div class="card-body"><h5>${title}</h5>${body}<div class="mt-3 d-flex gap-2"><button class="btn btn-primary btn-sm" onclick="saveInt()">Save all integrations</button>${test?`<button class="btn btn-outline-secondary btn-sm" onclick="testInt('${test}')">Test</button>`:''}</div></div></div></div>`;
+  $('#view').innerHTML=`<p class="text-muted small">Secret keys are stored only in your script's private properties and are never shown again in full. Leave a masked field alone to keep the saved key.</p><div class="row g-3">
+  ${card('Paystack (online payments)',sw('ps_on','Accept online payments with Paystack',c.paystack.enabled)+inp('ps_pub','Public key (pk_...)',c.paystack.publicKey)+inp('ps_sec','Secret key (sk_live_... or sk_test_...)',c.paystack.secretMask,'sk_live_...','text')+sw('ps_auto','Email the activation code automatically after a confirmed payment',c.paystack.autoCode)+`<div class="small text-muted mt-2">Callback is automatic. Optional webhook URL for the Paystack dashboard (best effort, every payment is re-verified with Paystack anyway):<br><span class="mono text-break">${esc(c.webAppUrl)}</span></div>`,'paystack')}
+  ${card('SMS (Termii)',sw('tm_on','Send SMS automatically from Messages',c.termii.enabled)+inp('tm_key','Termii API key',c.termii.keyMask)+inp('tm_from','Sender ID (max 11 characters)',c.termii.sender,'OKV')+'<div class="small text-muted mt-2">Needs a Termii account and an approved sender ID. Check the current Termii API documentation if sending fails.</div>','termii')}
+  ${card('Telegram alerts',sw('tg_on','Send every new submission to Telegram',c.telegram.enabled)+inp('tg_tok','Bot token (from @BotFather)',c.telegram.tokenMask)+inp('tg_chat','Chat ID',c.telegram.chat),'telegram')}
+  ${card('Outbound webhook (Zapier, Make, n8n, your own API)',sw('wh_on','POST every new submission as JSON',c.webhook.enabled)+inp('wh_url','Webhook URL (https://...)',c.webhook.url)+inp('wh_sec','Secret sent in the X-OKV-Secret header',c.webhook.secretMask),'webhook')}
+  ${card('Email alerts to you',sw('al_on','Email me on every submission',c.alerts.emailEnabled)+inp('al_mail','Send alerts to',c.alerts.ownerEmail,'','email'),null)}</div>`;
+}
+function intBody(){const g=i=>document.getElementById(i);return{paystack:{enabled:g('ps_on').checked,publicKey:g('ps_pub').value,secret:g('ps_sec').value,autoCode:g('ps_auto').checked},termii:{enabled:g('tm_on').checked,key:g('tm_key').value,sender:g('tm_from').value},telegram:{enabled:g('tg_on').checked,token:g('tg_tok').value,chat:g('tg_chat').value},webhook:{enabled:g('wh_on').checked,url:g('wh_url').value,secret:g('wh_sec').value},alerts:{emailEnabled:g('al_on').checked,ownerEmail:g('al_mail').value}}}
+async function saveInt(){await call('adminSaveConfig',intBody());toast('Integrations saved',true);integrations()}
+async function testInt(w){await call('adminSaveConfig',intBody());try{const m=await gs('adminTestIntegration',TOKEN,w);toast(m,true)}catch(e){toast((e.message||'Test failed').replace(/^Error: /,''))}}
+
+/* ---- settings ---- */
+async function settings(){
+  const s=await call('adminSettings'),c=await call('adminConfig');
+  const inp=(id,label,val,t)=>`<label class="form-label small mb-0 mt-2">${label}</label><input id="${id}" type="${t||'text'}" class="form-control form-control-sm" value="${esc(val==null?'':val)}">`;
+  const sw=(id,label,on)=>`<div class="form-check form-switch mb-2"><input class="form-check-input" type="checkbox" id="${id}" ${on?'checked':''}><label class="form-check-label" for="${id}">${label}</label></div>`;
+  $('#view').innerHTML=`<div class="row g-3"><div class="col-lg-6">
+  <div class="card shadow-sm"><div class="card-body"><h5>How customers can pay</h5><p class="small text-muted">Switch each payment method on or off. Paystack keys are in the Integrations tab.</p>
+   ${sw('sw_manual','Manual bank transfer (show bank details and receipt upload)',c.manualEnabled)}${sw('sw_ps','Paystack online payment',c.paystack.enabled)}
+   <div class="small text-muted">Paystack turns on only after you save a valid secret key in Integrations.</div><button class="btn btn-primary btn-sm mt-2" onclick="saveMethods()">Save payment methods</button></div></div>
+  <div class="card shadow-sm mt-3"><div class="card-body"><h5>Price and manual payment details</h5><p class="small text-muted">Shown on your website and inside every customer's HMS Licence page, so you can change them here at any time.</p>
+   ${inp('pr_price','Licence price (naira)',c.price,'number')}${inp('pr_bank','Bank name',c.pay.bank)}${inp('pr_an','Account name',c.pay.account_name)}${inp('pr_ac','Account number',c.pay.account_no)}${inp('pr_ins','Payment instructions',c.pay.instructions)}
+   <button class="btn btn-primary btn-sm mt-3" onclick="savePay()">Save price and payment details</button></div></div>
+  <div class="card shadow-sm mt-3"><div class="card-body"><h5>Website and system controls</h5>${sw('sw_trial','Free trial downloads open',c.trialsEnabled)}${sw('sw_buy','Purchases open',c.purchasesEnabled)}
+   ${inp('an_text','Announcement banner (empty = none)',c.announcement)}<label class="form-label small mb-0 mt-2">Installation service text</label><textarea id="in_text" class="form-control form-control-sm" rows="3">${esc(c.installText)}</textarea>
+   <button class="btn btn-primary btn-sm mt-3" onclick="saveCtl()">Save controls</button></div></div>
+  <div class="card shadow-sm mt-3"><div class="card-body"><h5>Download links</h5><p class="small text-muted">What people receive after the free-trial form. Each link must start with https://. Leave a link empty to hide that platform.</p>
+   <label class="form-label small mb-0">Windows (OKV_HMS_Setup_Trial.zip)</label><input id="du" class="form-control form-control-sm mb-2" value="${esc(s.downloadUrl)}">
+   <label class="form-label small mb-0">Mac, Apple chip (M1 to M4) DMG</label><input id="du_arm" class="form-control form-control-sm mb-2" value="${esc(s.macArmUrl)}">
+   <label class="form-label small mb-0">Mac, Intel chip DMG</label><input id="du_int" class="form-control form-control-sm mb-2" value="${esc(s.macIntelUrl)}">
+   <button class="btn btn-primary btn-sm" onclick="saveDl()">Save links</button></div></div>
+  <div class="card shadow-sm mt-3"><div class="card-body"><h5>Website address used inside the software</h5><p class="small text-muted">The Buy licence button in every customer's HMS opens this pricing page. Leave empty to use the address built into the software.</p>
+   <input id="pu" class="form-control form-control-sm mb-2" value="${esc(c.pricingUrl)}" placeholder="https://www.okvtechnology.com/okvhms"><button class="btn btn-primary btn-sm" onclick="savePricingUrl()">Save address</button></div></div></div>
+  <div class="col-lg-6">
+  <div class="card shadow-sm"><div class="card-body"><h5>Admin password reset code</h5><p class="small text-muted">A customer who lost both their password and recovery key sends you their Installation ID. Check they own the system, then give them this code. It works for that installation only, for today.</p>
+   <div class="input-group input-group-sm"><input id="rc_id" class="form-control" placeholder="HMS-1A2B3C4D"><button class="btn btn-warning" onclick="makeReset()">Create code</button></div><div id="rc_out" class="mt-2 fs-5 code"></div></div></div>
+  <div class="card shadow-sm mt-3"><div class="card-body"><h5>Change dashboard password</h5><input id="np" type="password" class="form-control form-control-sm mb-2" placeholder="New password (8+ characters)"><button class="btn btn-primary btn-sm" onclick="savePw()">Change password</button></div></div>
+  <div class="card shadow-sm mt-3"><div class="card-body"><h5>System information</h5><dl class="small mb-0"><dt>Web app URL (put it in the website's site.js and in okv_hms.py)</dt><dd class="mono text-break">${esc(s.webAppUrl)}</dd><dt>Licence secret (put the SAME value in okv_hms.py; never share or change it)</dt><dd class="mono text-break">${esc(s.licenseSecret)}</dd><dt>Emails you can still send today</dt><dd>${s.quota}</dd><dt>Spreadsheet</dt><dd><a target="_blank" rel="noopener" href="${esc(s.spreadsheetUrl)}">Open Google Sheet</a></dd></dl></div></div></div></div>`;
+}
+async function savePay(){await call('adminSaveConfig',{price:$('#pr_price').value,pay:{bank:$('#pr_bank').value,account_name:$('#pr_an').value,account_no:$('#pr_ac').value,instructions:$('#pr_ins').value}});toast('Saved. Website and HMS will show the new details.',true)}
+async function saveCtl(){await call('adminSaveConfig',{trialsEnabled:$('#sw_trial').checked,purchasesEnabled:$('#sw_buy').checked,announcement:$('#an_text').value,installText:$('#in_text').value});toast('Saved',true)}
+async function makeReset(){const c=await call('adminResetCode',$('#rc_id').value);$('#rc_out').textContent=c}
+async function saveDl(){await call('adminSaveSettings',{downloadUrl:$('#du').value,macArmUrl:$('#du_arm').value,macIntelUrl:$('#du_int').value});toast('Saved',true)}
+async function savePricingUrl(){await call('adminSaveConfig',{pricingUrl:$('#pu').value});toast('Saved. Customers\' software will use it within a few minutes.',true)}
+async function saveMethods(){const ps=$('#sw_ps').checked;try{await call('adminSaveConfig',{manualEnabled:$('#sw_manual').checked,paystack:{enabled:ps}});toast('Payment methods saved',true)}catch(e){}settings()}
+async function savePw(){await call('adminSaveSettings',{newPassword:$('#np').value});$('#np').value='';toast('Password changed',true)}
+</script></body></html>

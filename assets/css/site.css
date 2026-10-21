@@ -1,0 +1,36 @@
+:root{--p:#0f766e;--p2:#115e59;--p3:#14b8a6;--ink:#0f172a;--mu:#64748b}
+html{scroll-behavior:smooth}
+body{font-family:system-ui,"Segoe UI",Roboto,Arial,sans-serif;color:var(--ink);scroll-padding-top:70px}
+.navbar{background:var(--p2)}.navbar .nav-link{color:#ccfbf1}.navbar .nav-link:hover,.navbar .nav-link.active{color:#fff}
+.btn-solid{background:var(--p);color:#fff;font-weight:700;border:0}.btn-solid:hover{background:var(--p2);color:#fff}
+.btn-okv{background:#fff;color:var(--p2);font-weight:700}.btn-okv:hover{background:#ccfbf1;color:var(--p2)}
+.btn-ghost{border:2px solid rgba(255,255,255,.7);color:#fff;font-weight:700}.btn-ghost:hover{background:#fff;color:var(--p2)}
+.hero{background:linear-gradient(135deg,#115e59 0%,#0f766e 55%,#14b8a6 100%);color:#fff;padding:84px 0 72px;position:relative;overflow:hidden}
+.hero h1{font-weight:800;font-size:clamp(2rem,5vw,3.3rem);line-height:1.12}
+.hero .glow{position:absolute;right:-120px;top:-120px;width:420px;height:420px;border-radius:50%;background:rgba(255,255,255,.07)}
+.mock{background:#fff;color:var(--ink);border-radius:18px;box-shadow:0 20px 50px rgba(0,0,0,.25);overflow:hidden}
+.mock .bar{background:#f1f5f9;padding:8px 14px;display:flex;gap:6px;align-items:center}.mock .bar i{width:10px;height:10px;border-radius:50%;background:#cbd5e1;display:block}
+.mock .body{padding:16px}.mini{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.mini div{background:#f0fdfa;border-radius:10px;padding:10px;text-align:center}.mini b{display:block;font-size:1.3rem;color:var(--p)}.mini span{font-size:.7rem;color:var(--mu)}
+.trust{background:#f0fdfa;border-bottom:1px solid #ccfbf1}.trust .it{display:flex;gap:10px;align-items:center;font-weight:600;font-size:.92rem;padding:6px 0}
+.trust svg{flex:none;color:var(--p)}
+section{padding:68px 0}.alt{background:#f1f5f9}
+.eyebrow{color:var(--p);font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-size:.8rem}
+h2.sec{font-weight:800;font-size:clamp(1.6rem,3.5vw,2.3rem)}
+.feat{border:0;border-radius:16px;box-shadow:0 2px 12px rgba(15,23,42,.08);height:100%}
+.ic{width:46px;height:46px;border-radius:12px;background:#ccfbf1;color:var(--p2);display:flex;align-items:center;justify-content:center;font-weight:800;margin-bottom:10px}
+.step{width:46px;height:46px;border-radius:50%;background:var(--p);color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;flex:none}
+.stat{border-radius:14px;background:#fff;padding:16px;text-align:center;box-shadow:0 2px 10px rgba(0,0,0,.06)}.stat b{display:block;font-size:2rem;color:var(--p)}
+.dev{background:#fff;border-radius:16px;padding:22px;height:100%;box-shadow:0 2px 12px rgba(15,23,42,.08)}
+.net{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;font-weight:700}.net .node{background:var(--p);color:#fff;border-radius:12px;padding:10px 16px}.net .node.o{background:#fff;color:var(--p2);border:2px solid var(--p)}.net .ln{color:var(--mu);font-weight:400}
+.why{display:flex;gap:14px}.why .tick{width:34px;height:34px;border-radius:50%;background:#ccfbf1;color:var(--p2);display:flex;align-items:center;justify-content:center;flex:none;font-weight:800}
+.cta{background:linear-gradient(135deg,#115e59,#0f766e);color:#fff;border-radius:24px;padding:48px 28px;text-align:center}
+.price{border-radius:20px;border:2px solid #e2e8f0;background:#fff}.price.best{border-color:var(--p);box-shadow:0 8px 30px rgba(15,118,110,.2)}.price .amt{font-size:2.8rem;font-weight:800;color:var(--p)}
+.cmp td,.cmp th{padding:12px 14px;vertical-align:middle}.cmp .y{color:var(--p);font-weight:800}
+footer{background:#0f172a;color:#cbd5e1;padding:48px 0 24px}footer a{color:#5eead4;text-decoration:none}footer a:hover{text-decoration:underline}footer h6{color:#fff}
+.hp{position:absolute;left:-9999px;opacity:0}
+.pagehead{background:linear-gradient(135deg,#115e59,#0f766e);color:#fff;padding:60px 0 50px;text-align:center}
+.legal h2{font-size:1.25rem;margin-top:1.8rem;color:var(--p2);font-weight:700}.legal p,.legal li{line-height:1.7}.legal table{font-size:.92rem}
+#cookiebar{position:fixed;left:0;right:0;bottom:0;z-index:2000;background:#0f172a;color:#e2e8f0;padding:12px 16px;display:flex;gap:12px;align-items:center;justify-content:center;flex-wrap:wrap;font-size:.9rem}
+#cookiebar.d-none{display:none!important}
+/* phones: the wide section gutter must not push rows past the screen edge */
+@media (max-width:575.98px){.row.g-5{--bs-gutter-x:1.5rem;--bs-gutter-y:1.5rem}}
