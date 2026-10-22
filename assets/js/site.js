@@ -1,5 +1,5 @@
 /* ======== OWNER SETTINGS: paste your Apps Script web app URL (ends in /exec) ======== */
-const CONFIG={SCRIPT_URL:'PASTE_YOUR_WEB_APP_URL_HERE',WHATSAPP:'2348104141138',
+const CONFIG={SCRIPT_URL:'https://script.google.com/macros/s/AKfycbw8oYavjxLlB7SRvJMxLNSrATclL7PdlFjkpzMx5pEQ22_HEjhAahhuXyizA-pil3w/exec',WHATSAPP:'2348104141138',
   PAY_BANK:'YOUR BANK NAME, account name OKV Technology Consults, account number 0000000000'};
 /* Price, bank details, Paystack and notices are controlled from your OKV admin dashboard once the URL above is set. */
 /* ===================================================================================== */
